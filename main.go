@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -56,11 +57,24 @@ func paw() {
 	}
 }
 
+func getDomain(subDomain string) string {
+	if host, _, err := net.SplitHostPort(subDomain); err == nil {
+		subDomain = host
+	}
+	parts := strings.SplitN(subDomain, ".", 3)
+	if len(parts) == 3 {
+		return parts[1] + "." + parts[2] // return the parent domain
+	} else {
+		return subDomain // return the domain itself.
+	}
+}
+
 func serveAuth(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	if c, err := r.Cookie("pvtoken"); err == nil {
 		if _, ok := tokenCache.Load(c.Value); ok {
 			w.WriteHeader(http.StatusOK)
+			return
 		}
 	}
 	basicAuthPrefix := "Basic "
@@ -77,8 +91,8 @@ func serveAuth(w http.ResponseWriter, r *http.Request) {
 			if len(pair) == 2 {
 				if pwd, ok := userlist[pair[0]]; ok && pwd == pair[1] {
 					// success!
-					log.Println(pair[0], "authorized")
-					w.Header().Set("Set-Cookie", fmt.Sprintf("pvtoken=%s; Max-Age=%d;", newToken(), timeout))
+					log.Println(pair[0], "authorized on", r.Host)
+					w.Header().Set("Set-Cookie", fmt.Sprintf("pvtoken=%s; Max-Age=%d; Domain=%s; Path=/", newToken(), timeout, getDomain(r.Host)))
 					w.WriteHeader(http.StatusOK)
 					return
 				} else {
